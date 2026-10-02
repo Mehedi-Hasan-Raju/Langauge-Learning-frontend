@@ -43,3 +43,6 @@ next-env.d.ts
 # Node package files
 package.json
 package-lock.json
+
+package.json
+package-lock.json
