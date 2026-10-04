@@ -3,6 +3,7 @@ import "./globals.css";
 import CursorGlow from "../components/CursorGlow";
 import Footer from "../components/Footer";
 import { LanguageProvider } from "../context/LanguageContext";
+import { ThemeProvider } from "../context/ThemeContext";
 
 export const metadata: Metadata = {
   title: "GermanLearn",
@@ -17,6 +18,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
+        <ThemeProvider>
         <LanguageProvider>
           <CursorGlow />
 
@@ -24,6 +26,7 @@ export default function RootLayout({
 
           <Footer />
         </LanguageProvider>
+        </ThemeProvider>
       </body>
     </html>
   );
