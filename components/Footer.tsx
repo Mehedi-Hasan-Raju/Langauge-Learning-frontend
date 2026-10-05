@@ -28,7 +28,7 @@ export default function Footer() {
               </span>
 
               <span>
-                German<span className="text-red-400">Learn</span>
+                Deutsch<span className="text-red-400">Journey</span>
               </span>
             </Link>
 

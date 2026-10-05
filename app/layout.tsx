@@ -1,7 +1,10 @@
 import type { Metadata } from "next";
 import "./globals.css";
+
 import CursorGlow from "../components/CursorGlow";
+import Navbar from "../components/Navbar";
 import Footer from "../components/Footer";
+
 import { LanguageProvider } from "../context/LanguageContext";
 import { ThemeProvider } from "../context/ThemeContext";
 
@@ -16,16 +19,17 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" data-theme="dark">
       <body>
         <ThemeProvider>
-        <LanguageProvider>
-          <CursorGlow />
+          <LanguageProvider>
+            <CursorGlow />
+            <Navbar />
 
-          {children}
+            {children}
 
-          <Footer />
-        </LanguageProvider>
+            <Footer />
+          </LanguageProvider>
         </ThemeProvider>
       </body>
     </html>

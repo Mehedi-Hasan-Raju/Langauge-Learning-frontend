@@ -10,7 +10,7 @@ import MembersSection from "../components/MembersSection";
 export default function Home() {
   return (
     <>
-      <Navbar />
+      
 
       <main>
         <HeroSection />
