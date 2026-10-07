@@ -2,8 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 import CursorGlow from "../components/CursorGlow";
-import Navbar from "../components/Navbar";
-import Footer from "../components/Footer";
+import MainLayout from "../components/MainLayout";
 
 import { LanguageProvider } from "../context/LanguageContext";
 import { ThemeProvider } from "../context/ThemeContext";
@@ -24,11 +23,10 @@ export default function RootLayout({
         <ThemeProvider>
           <LanguageProvider>
             <CursorGlow />
-            <Navbar />
 
-            {children}
-
-            <Footer />
+            <MainLayout>
+              {children}
+            </MainLayout>
           </LanguageProvider>
         </ThemeProvider>
       </body>
