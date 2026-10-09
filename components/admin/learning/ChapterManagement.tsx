@@ -18,7 +18,12 @@ interface Level {
 interface Book {
   id: string;
   name: string;
+  author?: string | null;
   levelId: string;
+  level?: {
+    id: string;
+    name: string;
+  };
 }
 
 interface Chapter {
@@ -28,6 +33,7 @@ interface Chapter {
   sectionNo: number;
   accessType: "FREE" | "PREMIUM";
   bookId: string;
+  book?: Book;
 }
 
 interface ChapterManagementProps {
@@ -35,25 +41,18 @@ interface ChapterManagementProps {
   levels: Level[];
   books?: Book[];
   selectedBookId?: string;
+  onSelectedBookChange?: (bookId: string) => void;
+  onSelectedChapterChange?: (chapterId: string) => void;
   onChaptersChange?: () => void;
 }
-
-const formatChapterNumber = (
-  chapterNo: number,
-  sectionNo: number
-) => {
-  if (sectionNo === 0) {
-    return String(chapterNo);
-  }
-
-  return `${chapterNo}.${sectionNo}`;
-};
 
 export default function ChapterManagement({
   token,
   levels,
-  books: externalBooks = [],
-  selectedBookId = "",
+  books: parentBooks = [],
+  selectedBookId: parentSelectedBookId = "",
+  onSelectedBookChange,
+  onSelectedChapterChange,
   onChaptersChange,
 }: ChapterManagementProps) {
   const { language } = useLanguage();
@@ -62,110 +61,136 @@ export default function ChapterManagement({
   const isBangla = language === "bn";
   const isDark = theme === "dark";
 
-  const [books, setBooks] =
-    useState<Book[]>(externalBooks);
-
-  const [selectedBook, setSelectedBook] =
-    useState(selectedBookId);
-
-  const [chapters, setChapters] = useState<Chapter[]>(
-    []
+  const [books, setBooks] = useState<Book[]>(parentBooks);
+  const [selectedBookId, setSelectedBookId] = useState(
+    parentSelectedBookId
   );
 
-  const [loading, setLoading] = useState(false);
-  const [booksLoading, setBooksLoading] =
-    useState(false);
-  const [actionLoading, setActionLoading] =
-    useState(false);
+  const [chapters, setChapters] = useState<Chapter[]>([]);
+
+  const [loadingBooks, setLoadingBooks] = useState(false);
+  const [loadingChapters, setLoadingChapters] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
+
+  const [error, setError] = useState("");
 
   const [modalOpen, setModalOpen] = useState(false);
-
   const [editingChapter, setEditingChapter] =
     useState<Chapter | null>(null);
 
-  /*
-   * Keep external books synchronized.
-   */
-  useEffect(() => {
-    setBooks(externalBooks);
-  }, [externalBooks]);
+  /* =====================================================
+     SYNC PARENT BOOKS
+  ===================================================== */
 
-  /*
-   * Keep selected book synchronized.
-   */
   useEffect(() => {
-    setSelectedBook(selectedBookId);
-  }, [selectedBookId]);
+    setBooks(parentBooks);
+  }, [parentBooks]);
 
-  /*
-   * If no books were passed from parent,
-   * fetch all books from available levels.
-   */
+  /* =====================================================
+     SYNC SELECTED BOOK FROM PARENT
+  ===================================================== */
+
   useEffect(() => {
-    if (externalBooks.length > 0) {
+    setSelectedBookId(parentSelectedBookId);
+  }, [parentSelectedBookId]);
+
+  /* =====================================================
+     FETCH BOOKS ONLY IF PARENT DOES NOT PROVIDE THEM
+  ===================================================== */
+
+  useEffect(() => {
+    if (parentBooks.length > 0 || levels.length === 0) {
       return;
     }
 
-    if (levels.length === 0) {
-      setBooks([]);
-      return;
-    }
+    const fetchAllBooks = async () => {
+      try {
+        setLoadingBooks(true);
+        setError("");
+
+        const allBooks: Book[] = [];
+
+        for (const level of levels) {
+          const response = await fetch(
+            `${API_URL}/learning/books/level/${level.id}`
+          );
+
+          const data = await response.json();
+
+          if (!response.ok) {
+            throw new Error(
+              data.message || "Failed to fetch books"
+            );
+          }
+
+          if (Array.isArray(data.books)) {
+            allBooks.push(...data.books);
+          }
+        }
+
+        setBooks(allBooks);
+      } catch (error) {
+        console.error("Fetch books error:", error);
+
+        setBooks([]);
+
+        setError(
+          isBangla
+            ? "বই লোড করতে সমস্যা হয়েছে।"
+            : "Failed to load books."
+        );
+      } finally {
+        setLoadingBooks(false);
+      }
+    };
 
     fetchAllBooks();
-  }, [levels, externalBooks.length]);
+  }, [levels, parentBooks.length, isBangla]);
 
-  /*
-   * Fetch chapters whenever book changes.
-   */
+  /* =====================================================
+     VALIDATE SELECTED BOOK
+  ===================================================== */
+
   useEffect(() => {
-    if (!selectedBook) {
+    if (books.length === 0) {
+      if (selectedBookId !== "") {
+        setSelectedBookId("");
+      }
+
+      return;
+    }
+
+    const selectedExists = books.some(
+      (book) => book.id === selectedBookId
+    );
+
+    if (!selectedExists && !parentSelectedBookId) {
+      const firstBookId = books[0].id;
+
+      setSelectedBookId(firstBookId);
+
+      onSelectedBookChange?.(firstBookId);
+    }
+  }, [
+    books,
+    selectedBookId,
+    parentSelectedBookId,
+    onSelectedBookChange,
+  ]);
+
+  /* =====================================================
+     FETCH CHAPTERS
+  ===================================================== */
+
+  const fetchChapters = async (bookId: string) => {
+    if (!bookId) {
       setChapters([]);
       return;
     }
 
-    fetchChapters(selectedBook);
-  }, [selectedBook]);
-
-  const fetchAllBooks = async () => {
     try {
-      setBooksLoading(true);
-
-      const allBooks: Book[] = [];
-
-      for (const level of levels) {
-        const response = await fetch(
-          `${API_URL}/learning/books/level/${level.id}`
-        );
-
-        const data = await response.json();
-
-        if (!response.ok) {
-          throw new Error(
-            data.message ||
-              `Failed to fetch books for ${level.name}`
-          );
-        }
-
-        allBooks.push(...(data.books || []));
-      }
-
-      setBooks(allBooks);
-    } catch (error) {
-      console.error("Fetch all books error:", error);
-
-      alert(
-        error instanceof Error
-          ? error.message
-          : "Failed to fetch books"
-      );
-    } finally {
-      setBooksLoading(false);
-    }
-  };
-
-  const fetchChapters = async (bookId: string) => {
-    try {
-      setLoading(true);
+      setLoadingChapters(true);
+      setError("");
 
       const response = await fetch(
         `${API_URL}/learning/chapters/book/${bookId}`
@@ -175,35 +200,55 @@ export default function ChapterManagement({
 
       if (!response.ok) {
         throw new Error(
-          data.message ||
-            "Failed to fetch chapters"
+          data.message || "Failed to fetch chapters"
         );
       }
 
-      setChapters(data.chapters || []);
-    } catch (error) {
-      console.error(
-        "Fetch chapters error:",
-        error
-      );
+      const fetchedChapters: Chapter[] =
+        data.chapters || [];
 
-      alert(
-        error instanceof Error
-          ? error.message
-          : "Failed to fetch chapters"
-      );
+      setChapters(fetchedChapters);
+
+      /*
+       * Automatically select first chapter if current
+       * selected chapter no longer exists.
+       */
+      if (fetchedChapters.length > 0) {
+        onSelectedChapterChange?.(
+          fetchedChapters[0].id
+        );
+      } else {
+        onSelectedChapterChange?.("");
+      }
+    } catch (error) {
+      console.error("Fetch chapters error:", error);
 
       setChapters([]);
+      onSelectedChapterChange?.("");
+
+      setError(
+        isBangla
+          ? "Chapter লোড করতে সমস্যা হয়েছে।"
+          : "Failed to load chapters."
+      );
     } finally {
-      setLoading(false);
+      setLoadingChapters(false);
     }
   };
 
-  const selectedBookObject = useMemo(() => {
-    return books.find(
-      (book) => book.id === selectedBook
-    );
-  }, [books, selectedBook]);
+  useEffect(() => {
+    if (!selectedBookId) {
+      setChapters([]);
+      onSelectedChapterChange?.("");
+      return;
+    }
+
+    fetchChapters(selectedBookId);
+  }, [selectedBookId]);
+
+  /* =====================================================
+     SORT CHAPTERS
+  ===================================================== */
 
   const sortedChapters = useMemo(() => {
     return [...chapters].sort((a, b) => {
@@ -215,35 +260,62 @@ export default function ChapterManagement({
     });
   }, [chapters]);
 
-  const freeChapters = useMemo(() => {
-    return chapters.filter(
-      (chapter) => chapter.accessType === "FREE"
-    ).length;
-  }, [chapters]);
+  /* =====================================================
+     CHAPTER NUMBER
+  ===================================================== */
 
-  const premiumChapters = useMemo(() => {
-    return chapters.filter(
-      (chapter) =>
-        chapter.accessType === "PREMIUM"
-    ).length;
-  }, [chapters]);
+  const getChapterNumber = (chapter: Chapter) => {
+    if (chapter.sectionNo === 0) {
+      return `${chapter.chapterNo}`;
+    }
 
-  const openCreateModal = () => {
+    return `${chapter.chapterNo}.${chapter.sectionNo}`;
+  };
+
+  /* =====================================================
+     CREATE
+  ===================================================== */
+
+  const handleCreate = () => {
+    if (!selectedBookId) {
+      setError(
+        isBangla
+          ? "প্রথমে Book Management থেকে একটি Book নির্বাচন করুন।"
+          : "Please select a book from Book Management first."
+      );
+
+      return;
+    }
+
     setEditingChapter(null);
     setModalOpen(true);
+    setError("");
   };
 
-  const openEditModal = (chapter: Chapter) => {
+  /* =====================================================
+     EDIT
+  ===================================================== */
+
+  const handleEdit = (chapter: Chapter) => {
     setEditingChapter(chapter);
     setModalOpen(true);
+    setError("");
   };
 
-  const closeModal = () => {
+  /* =====================================================
+     CLOSE MODAL
+  ===================================================== */
+
+  const handleCloseModal = () => {
     if (actionLoading) return;
 
     setModalOpen(false);
     setEditingChapter(null);
   };
+
+  /* =====================================================
+     CREATE / UPDATE
+  ===================================================== */
 
   const handleSubmit = async (data: {
     title: string;
@@ -254,23 +326,15 @@ export default function ChapterManagement({
   }) => {
     try {
       setActionLoading(true);
+      setError("");
 
-      const url = editingChapter
-        ? `${API_URL}/learning/chapters/${editingChapter.id}`
+      const isEditing = Boolean(editingChapter);
+
+      const url = isEditing
+        ? `${API_URL}/learning/chapters/${editingChapter?.id}`
         : `${API_URL}/learning/chapters`;
 
-      const method = editingChapter
-        ? "PATCH"
-        : "POST";
-
-      const body = editingChapter
-        ? {
-            title: data.title,
-            chapterNo: data.chapterNo,
-            sectionNo: data.sectionNo,
-            accessType: data.accessType,
-          }
-        : data;
+      const method = isEditing ? "PATCH" : "POST";
 
       const response = await fetch(url, {
         method,
@@ -278,7 +342,7 @@ export default function ChapterManagement({
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify(body),
+        body: JSON.stringify(data),
       });
 
       const result = await response.json();
@@ -286,11 +350,9 @@ export default function ChapterManagement({
       if (!response.ok) {
         throw new Error(
           result.message ||
-            `Failed to ${
-              editingChapter
-                ? "update"
-                : "create"
-            } chapter`
+            (isEditing
+              ? "Failed to update chapter"
+              : "Failed to create chapter")
         );
       }
 
@@ -298,50 +360,56 @@ export default function ChapterManagement({
       setEditingChapter(null);
 
       /*
-       * Refresh the currently selected book.
+       * If chapter is created/updated under another book,
+       * update selected book in parent.
        */
-      const refreshBookId =
-        editingChapter?.bookId || data.bookId;
+      if (data.bookId !== selectedBookId) {
+        setSelectedBookId(data.bookId);
+        onSelectedBookChange?.(data.bookId);
 
-      setSelectedBook(refreshBookId);
-
-      await fetchChapters(refreshBookId);
+        await fetchChapters(data.bookId);
+      } else {
+        await fetchChapters(selectedBookId);
+      }
 
       onChaptersChange?.();
     } catch (error) {
-      console.error(
-        "Chapter save error:",
-        error
-      );
+      console.error("Chapter submit error:", error);
 
-      alert(
+      setError(
         error instanceof Error
           ? error.message
-          : "Something went wrong"
+          : isBangla
+          ? "Chapter save করতে সমস্যা হয়েছে।"
+          : "Failed to save chapter."
       );
+
+      throw error;
     } finally {
       setActionLoading(false);
     }
   };
 
-  const handleDelete = async (
-    chapter: Chapter
-  ) => {
-    const chapterNumber = formatChapterNumber(
-      chapter.chapterNo,
-      chapter.sectionNo
-    );
+  /* =====================================================
+     DELETE
+  ===================================================== */
 
+  const handleDelete = async (chapter: Chapter) => {
     const confirmed = window.confirm(
       isBangla
-        ? `Chapter ${chapterNumber} delete করতে চান?`
-        : `Are you sure you want to delete Chapter ${chapterNumber}?`
+        ? `আপনি কি "${getChapterNumber(
+            chapter
+          )} ${chapter.title}" delete করতে চান?`
+        : `Are you sure you want to delete "${getChapterNumber(
+            chapter
+          )} ${chapter.title}"?`
     );
 
     if (!confirmed) return;
 
     try {
       setActionLoading(true);
+      setError("");
 
       const response = await fetch(
         `${API_URL}/learning/chapters/${chapter.id}`,
@@ -353,546 +421,370 @@ export default function ChapterManagement({
         }
       );
 
-      const result = await response.json();
+      const data = await response.json();
 
       if (!response.ok) {
         throw new Error(
-          result.message ||
-            "Failed to delete chapter"
+          data.message || "Failed to delete chapter"
         );
       }
 
-      await fetchChapters(chapter.bookId);
+      await fetchChapters(selectedBookId);
 
       onChaptersChange?.();
     } catch (error) {
-      console.error(
-        "Delete chapter error:",
-        error
-      );
+      console.error("Delete chapter error:", error);
 
-      alert(
+      setError(
         error instanceof Error
           ? error.message
-          : "Failed to delete chapter"
+          : isBangla
+          ? "Chapter delete করতে সমস্যা হয়েছে।"
+          : "Failed to delete chapter."
       );
     } finally {
       setActionLoading(false);
     }
   };
 
+  /* =====================================================
+     STATS
+  ===================================================== */
+
+  const totalChapters = chapters.length;
+
+  const freeChapters = chapters.filter(
+    (chapter) => chapter.accessType === "FREE"
+  ).length;
+
+  const premiumChapters = chapters.filter(
+    (chapter) => chapter.accessType === "PREMIUM"
+  ).length;
+
+  /* =====================================================
+     UI
+  ===================================================== */
+
   return (
     <>
-      <section className="mt-10 space-y-6">
-        {/* Header */}
-        <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
-          <div>
-            <h2 className="text-2xl font-bold tracking-tight">
-              {isBangla
-                ? "Chapter Management"
-                : "Chapter Management"}
-            </h2>
+      <section
+        className={`rounded-3xl border p-5 shadow-xl transition sm:p-6 ${
+          isDark
+            ? "border-white/10 bg-white/[0.03]"
+            : "border-slate-200 bg-white"
+        }`}
+      >
+        {/* HEADER */}
 
-            <p
-              className={`mt-1 text-sm ${
+        <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3">
+            <div
+              className={`flex h-11 w-11 items-center justify-center rounded-2xl ${
                 isDark
-                  ? "text-slate-400"
-                  : "text-slate-500"
+                  ? "bg-rose-500/10 text-rose-400"
+                  : "bg-rose-50 text-rose-600"
               }`}
             >
-              {isBangla
-                ? "Chapter এবং chapter parts manage করুন"
-                : "Manage chapters and chapter parts"}
-            </p>
-          </div>
+              📖
+            </div>
 
-          <button
-            onClick={openCreateModal}
-            disabled={
-              books.length === 0 ||
-              booksLoading
-            }
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-rose-600 to-amber-500 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-rose-500/10 transition hover:scale-[1.02] hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            <span className="text-lg">+</span>
-
-            {isBangla
-              ? "Add Chapter"
-              : "Add Chapter"}
-          </button>
-        </div>
-
-        {/* Book Filter */}
-        <div
-          className={`rounded-2xl border p-5 ${
-            isDark
-              ? "border-white/10 bg-white/[0.03]"
-              : "border-slate-200 bg-white shadow-sm"
-          }`}
-        >
-          <label
-            className={`mb-2 block text-sm font-medium ${
-              isDark
-                ? "text-slate-300"
-                : "text-slate-700"
-            }`}
-          >
-            {isBangla
-              ? "Select Book"
-              : "Select Book"}
-          </label>
-
-          <select
-            value={selectedBook}
-            onChange={(e) =>
-              setSelectedBook(e.target.value)
-            }
-            disabled={booksLoading}
-            className={`w-full rounded-xl border px-4 py-3 text-sm outline-none transition ${
-              isDark
-                ? "border-white/10 bg-[#111827] text-white focus:border-rose-500/50"
-                : "border-slate-200 bg-white text-slate-900 focus:border-rose-400"
-            }`}
-          >
-            <option value="">
-              {booksLoading
-                ? "Loading..."
-                : isBangla
-                ? "Book select করুন"
-                : "Select a book"}
-            </option>
-
-            {books.map((book) => (
-              <option
-                key={book.id}
-                value={book.id}
-              >
-                {book.name}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* Selected Book */}
-        {selectedBookObject && (
-          <div
-            className={`flex flex-col justify-between gap-4 rounded-2xl border p-5 sm:flex-row sm:items-center ${
-              isDark
-                ? "border-white/10 bg-white/[0.03]"
-                : "border-slate-200 bg-white shadow-sm"
-            }`}
-          >
             <div>
-              <p
-                className={`text-xs ${
+              <h2
+                className={`text-xl font-bold sm:text-2xl ${
                   isDark
-                    ? "text-slate-500"
-                    : "text-slate-400"
+                    ? "text-white"
+                    : "text-slate-900"
+                }`}
+              >
+                Chapter Management
+              </h2>
+
+              <p
+                className={`text-sm ${
+                  isDark
+                    ? "text-slate-400"
+                    : "text-slate-500"
                 }`}
               >
                 {isBangla
-                  ? "Selected Book"
-                  : "Selected Book"}
+                  ? "Selected Book-এর Chapter ও Section manage করুন"
+                  : "Manage chapters and sections for the selected book"}
               </p>
-
-              <h3 className="mt-1 text-xl font-bold">
-                {selectedBookObject.name}
-              </h3>
             </div>
+          </div>
 
-            <div
-              className={`rounded-xl px-4 py-3 text-sm ${
+          <button
+            type="button"
+            onClick={handleCreate}
+            disabled={!selectedBookId || actionLoading}
+            className="rounded-xl bg-gradient-to-r from-rose-500 to-amber-500 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-rose-500/20 transition hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            + {isBangla ? "নতুন Chapter" : "Add Chapter"}
+          </button>
+        </div>
+
+        {/* SELECTED BOOK INFO */}
+
+        <div
+          className={`mb-6 flex items-center gap-3 rounded-2xl border p-4 ${
+            isDark
+              ? "border-white/10 bg-black/10"
+              : "border-slate-200 bg-slate-50"
+          }`}
+        >
+          <div className="text-xl">📚</div>
+
+          <div>
+            <p
+              className={`text-xs ${
                 isDark
-                  ? "bg-white/5 text-slate-300"
-                  : "bg-slate-50 text-slate-600"
+                  ? "text-slate-500"
+                  : "text-slate-500"
               }`}
             >
-              {chapters.length}{" "}
               {isBangla
-                ? "Chapters"
-                : "Chapters"}
-            </div>
+                ? "Selected Book"
+                : "Selected Book"}
+            </p>
+
+            <p
+              className={`font-semibold ${
+                isDark
+                  ? "text-white"
+                  : "text-slate-900"
+              }`}
+            >
+              {books.find(
+                (book) => book.id === selectedBookId
+              )?.name || "No book selected"}
+            </p>
+          </div>
+        </div>
+
+        {/* ERROR */}
+
+        {error && (
+          <div className="mb-5 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+            {error}
           </div>
         )}
 
-        {/* Stats */}
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        {/* STATS */}
+
+        <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
           <div
-            className={`rounded-2xl border p-5 ${
+            className={`rounded-2xl border p-4 ${
               isDark
-                ? "border-white/10 bg-white/[0.03]"
-                : "border-slate-200 bg-white shadow-sm"
+                ? "border-white/10 bg-white/[0.02]"
+                : "border-slate-200 bg-slate-50"
             }`}
           >
-            <p
-              className={`text-sm ${
-                isDark
-                  ? "text-slate-400"
-                  : "text-slate-500"
-              }`}
-            >
-              {isBangla
-                ? "মোট Chapters"
-                : "Total Chapters"}
+            <p className="text-xs text-slate-500">
+              Total Chapters
             </p>
 
-            <p className="mt-2 text-3xl font-bold">
-              {chapters.length}
+            <p
+              className={`mt-1 text-2xl font-bold ${
+                isDark
+                  ? "text-white"
+                  : "text-slate-900"
+              }`}
+            >
+              {totalChapters}
             </p>
           </div>
 
           <div
-            className={`rounded-2xl border p-5 ${
+            className={`rounded-2xl border p-4 ${
               isDark
-                ? "border-white/10 bg-white/[0.03]"
-                : "border-slate-200 bg-white shadow-sm"
+                ? "border-emerald-500/10 bg-emerald-500/[0.03]"
+                : "border-emerald-200 bg-emerald-50"
             }`}
           >
-            <p
-              className={`text-sm ${
-                isDark
-                  ? "text-slate-400"
-                  : "text-slate-500"
-              }`}
-            >
-              {isBangla
-                ? "Free Chapters"
-                : "Free Chapters"}
+            <p className="text-xs text-emerald-500">
+              Free
             </p>
 
-            <p className="mt-2 text-3xl font-bold text-emerald-500">
+            <p className="mt-1 text-2xl font-bold text-emerald-500">
               {freeChapters}
             </p>
           </div>
 
           <div
-            className={`rounded-2xl border p-5 ${
+            className={`rounded-2xl border p-4 ${
               isDark
-                ? "border-white/10 bg-white/[0.03]"
-                : "border-slate-200 bg-white shadow-sm"
+                ? "border-amber-500/10 bg-amber-500/[0.03]"
+                : "border-amber-200 bg-amber-50"
             }`}
           >
-            <p
-              className={`text-sm ${
-                isDark
-                  ? "text-slate-400"
-                  : "text-slate-500"
-              }`}
-            >
-              {isBangla
-                ? "Premium Chapters"
-                : "Premium Chapters"}
+            <p className="text-xs text-amber-500">
+              Premium
             </p>
 
-            <p className="mt-2 text-3xl font-bold text-amber-500">
+            <p className="mt-1 text-2xl font-bold text-amber-500">
               {premiumChapters}
             </p>
           </div>
         </div>
 
-        {/* Chapter Table */}
-        <div
-          className={`overflow-hidden rounded-2xl border ${
-            isDark
-              ? "border-white/10 bg-white/[0.03]"
-              : "border-slate-200 bg-white shadow-sm"
-          }`}
-        >
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[850px] text-left">
-              <thead
-                className={
-                  isDark
-                    ? "border-b border-white/10 bg-white/[0.02]"
-                    : "border-b border-slate-200 bg-slate-50"
-                }
-              >
-                <tr>
-                  <th
-                    className={`px-6 py-4 text-xs font-semibold uppercase tracking-wider ${
-                      isDark
-                        ? "text-slate-400"
-                        : "text-slate-500"
-                    }`}
-                  >
-                    #
-                  </th>
+        {/* NO BOOK */}
 
-                  <th
-                    className={`px-6 py-4 text-xs font-semibold uppercase tracking-wider ${
-                      isDark
-                        ? "text-slate-400"
-                        : "text-slate-500"
-                    }`}
-                  >
-                    {isBangla
-                      ? "Chapter"
-                      : "Chapter"}
-                  </th>
+        {!selectedBookId ? (
+          <div
+            className={`rounded-2xl border border-dashed p-10 text-center ${
+              isDark
+                ? "border-white/10 text-slate-500"
+                : "border-slate-300 text-slate-500"
+            }`}
+          >
+            <div className="mb-3 text-4xl">
+              📚
+            </div>
 
-                  <th
-                    className={`px-6 py-4 text-xs font-semibold uppercase tracking-wider ${
-                      isDark
-                        ? "text-slate-400"
-                        : "text-slate-500"
-                    }`}
-                  >
-                    {isBangla
-                      ? "Title"
-                      : "Title"}
-                  </th>
-
-                  <th
-                    className={`px-6 py-4 text-xs font-semibold uppercase tracking-wider ${
-                      isDark
-                        ? "text-slate-400"
-                        : "text-slate-500"
-                    }`}
-                  >
-                    {isBangla
-                      ? "Access"
-                      : "Access"}
-                  </th>
-
-                  <th
-                    className={`px-6 py-4 text-right text-xs font-semibold uppercase tracking-wider ${
-                      isDark
-                        ? "text-slate-400"
-                        : "text-slate-500"
-                    }`}
-                  >
-                    {isBangla
-                      ? "Actions"
-                      : "Actions"}
-                  </th>
-                </tr>
-              </thead>
-
-              <tbody
-                className={
-                  isDark
-                    ? "divide-y divide-white/5"
-                    : "divide-y divide-slate-100"
-                }
-              >
-                {!selectedBook ? (
-                  <tr>
-                    <td
-                      colSpan={5}
-                      className={`px-6 py-12 text-center text-sm ${
-                        isDark
-                          ? "text-slate-400"
-                          : "text-slate-500"
-                      }`}
-                    >
-                      {isBangla
-                        ? "প্রথমে একটি Book select করুন"
-                        : "Please select a book first"}
-                    </td>
-                  </tr>
-                ) : loading ? (
-                  <tr>
-                    <td
-                      colSpan={5}
-                      className={`px-6 py-12 text-center text-sm ${
-                        isDark
-                          ? "text-slate-400"
-                          : "text-slate-500"
-                      }`}
-                    >
-                      Loading...
-                    </td>
-                  </tr>
-                ) : sortedChapters.length === 0 ? (
-                  <tr>
-                    <td
-                      colSpan={5}
-                      className={`px-6 py-12 text-center text-sm ${
-                        isDark
-                          ? "text-slate-400"
-                          : "text-slate-500"
-                      }`}
-                    >
-                      <div className="mx-auto max-w-sm">
-                        <div className="mb-3 text-3xl">
-                          📚
-                        </div>
-
-                        <p className="font-medium">
-                          {isBangla
-                            ? "এই Book-এ কোনো Chapter নেই"
-                            : "No chapters found"}
-                        </p>
-
-                        <p
-                          className={`mt-1 text-xs ${
-                            isDark
-                              ? "text-slate-500"
-                              : "text-slate-400"
-                          }`}
-                        >
-                          {isBangla
-                            ? "Add Chapter button ব্যবহার করুন"
-                            : "Use the Add Chapter button to create one"}
-                        </p>
-                      </div>
-                    </td>
-                  </tr>
-                ) : (
-                  sortedChapters.map(
-                    (chapter, index) => {
-                      const number =
-                        formatChapterNumber(
-                          chapter.chapterNo,
-                          chapter.sectionNo
-                        );
-
-                      const isMainChapter =
-                        chapter.sectionNo === 0;
-
-                      return (
-                        <tr
-                          key={chapter.id}
-                          className={`transition ${
-                            isDark
-                              ? "hover:bg-white/[0.025]"
-                              : "hover:bg-slate-50"
-                          }`}
-                        >
-                          <td className="px-6 py-4 text-sm">
-                            {index + 1}
-                          </td>
-
-                          <td className="px-6 py-4">
-                            <div
-                              className={`inline-flex items-center gap-2 rounded-xl px-3 py-2 ${
-                                isMainChapter
-                                  ? isDark
-                                    ? "bg-rose-500/10 text-rose-300"
-                                    : "bg-rose-50 text-rose-600"
-                                  : isDark
-                                  ? "bg-white/5 text-slate-300"
-                                  : "bg-slate-100 text-slate-600"
-                              }`}
-                            >
-                              {!isMainChapter && (
-                                <span className="text-slate-400">
-                                  ↳
-                                </span>
-                              )}
-
-                              <span className="font-bold">
-                                {number}
-                              </span>
-                            </div>
-                          </td>
-
-                          <td className="px-6 py-4">
-                            <div
-                              className={
-                                !isMainChapter
-                                  ? "pl-3"
-                                  : ""
-                              }
-                            >
-                              <p
-                                className={`font-medium ${
-                                  !isMainChapter
-                                    ? isDark
-                                      ? "text-slate-300"
-                                      : "text-slate-700"
-                                    : ""
-                                }`}
-                              >
-                                {chapter.title}
-                              </p>
-
-                              {!isMainChapter && (
-                                <p
-                                  className={`mt-0.5 text-xs ${
-                                    isDark
-                                      ? "text-slate-500"
-                                      : "text-slate-400"
-                                  }`}
-                                >
-                                  {isBangla
-                                    ? "Chapter Part"
-                                    : "Chapter Part"}
-                                </p>
-                              )}
-                            </div>
-                          </td>
-
-                          <td className="px-6 py-4">
-                            {chapter.accessType ===
-                            "PREMIUM" ? (
-                              <span className="inline-flex items-center gap-1.5 rounded-lg bg-amber-500/10 px-3 py-1.5 text-xs font-semibold text-amber-500">
-                                🔒 Premium
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500/10 px-3 py-1.5 text-xs font-semibold text-emerald-500">
-                                🔓 Free
-                              </span>
-                            )}
-                          </td>
-
-                          <td className="px-6 py-4">
-                            <div className="flex justify-end gap-2">
-                              <button
-                                onClick={() =>
-                                  openEditModal(
-                                    chapter
-                                  )
-                                }
-                                disabled={
-                                  actionLoading
-                                }
-                                className={`rounded-lg px-3 py-2 text-xs font-medium transition ${
-                                  isDark
-                                    ? "bg-white/5 text-slate-300 hover:bg-white/10"
-                                    : "bg-slate-100 text-slate-700 hover:bg-slate-200"
-                                }`}
-                              >
-                                {isBangla
-                                  ? "Edit"
-                                  : "Edit"}
-                              </button>
-
-                              <button
-                                onClick={() =>
-                                  handleDelete(
-                                    chapter
-                                  )
-                                }
-                                disabled={
-                                  actionLoading
-                                }
-                                className="rounded-lg bg-rose-500/10 px-3 py-2 text-xs font-medium text-rose-400 transition hover:bg-rose-500/20 disabled:opacity-50"
-                              >
-                                {isBangla
-                                  ? "Delete"
-                                  : "Delete"}
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    }
-                  )
-                )}
-              </tbody>
-            </table>
+            <p className="font-medium">
+              {isBangla
+                ? "Book Management থেকে একটি Book নির্বাচন করুন"
+                : "Select a book from Book Management"}
+            </p>
           </div>
-        </div>
+        ) : loadingChapters ? (
+          <div className="flex items-center justify-center py-12">
+            <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-300 border-t-rose-500" />
+          </div>
+        ) : sortedChapters.length === 0 ? (
+          <div
+            className={`rounded-2xl border border-dashed p-10 text-center ${
+              isDark
+                ? "border-white/10 text-slate-500"
+                : "border-slate-300 text-slate-500"
+            }`}
+          >
+            <div className="mb-3 text-4xl">
+              📖
+            </div>
+
+            <p
+              className={`font-medium ${
+                isDark
+                  ? "text-slate-300"
+                  : "text-slate-700"
+              }`}
+            >
+              {isBangla
+                ? "এই Book-এ এখনো কোনো Chapter নেই"
+                : "No chapters found for this book"}
+            </p>
+
+            <p className="mt-1 text-sm">
+              {isBangla
+                ? "উপরের Add Chapter button ব্যবহার করুন।"
+                : "Use the Add Chapter button above."}
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {sortedChapters.map((chapter) => (
+              <div
+                key={chapter.id}
+                className={`rounded-2xl border p-4 transition ${
+                  isDark
+                    ? "border-white/10 bg-white/[0.02] hover:border-white/20"
+                    : "border-slate-200 bg-white hover:border-slate-300"
+                }`}
+              >
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                  <div className="flex items-start gap-4">
+                    <div
+                      className={`flex h-12 min-w-12 items-center justify-center rounded-xl px-2 text-sm font-bold ${
+                        chapter.accessType === "PREMIUM"
+                          ? "bg-amber-500/10 text-amber-500"
+                          : "bg-emerald-500/10 text-emerald-500"
+                      }`}
+                    >
+                      {getChapterNumber(chapter)}
+                    </div>
+
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3
+                          className={`text-base font-semibold sm:text-lg ${
+                            isDark
+                              ? "text-white"
+                              : "text-slate-900"
+                          }`}
+                        >
+                          {chapter.title}
+                        </h3>
+
+                        <span
+                          className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+                            chapter.accessType === "PREMIUM"
+                              ? "bg-amber-500/10 text-amber-500"
+                              : "bg-emerald-500/10 text-emerald-500"
+                          }`}
+                        >
+                          {chapter.accessType}
+                        </span>
+                      </div>
+
+                      <p
+                        className={`mt-1 text-xs ${
+                          isDark
+                            ? "text-slate-500"
+                            : "text-slate-500"
+                        }`}
+                      >
+                        Chapter {chapter.chapterNo}
+                        {chapter.sectionNo > 0
+                          ? ` • Section ${chapter.sectionNo}`
+                          : " • Main Chapter"}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleEdit(chapter)
+                      }
+                      disabled={actionLoading}
+                      className={`rounded-xl border px-4 py-2 text-sm font-medium ${
+                        isDark
+                          ? "border-white/10 bg-white/[0.03] text-slate-200 hover:bg-white/[0.08]"
+                          : "border-slate-200 text-slate-700 hover:bg-slate-50"
+                      }`}
+                    >
+                      Edit
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleDelete(chapter)
+                      }
+                      disabled={actionLoading}
+                      className="rounded-xl border border-red-500/20 bg-red-500/5 px-4 py-2 text-sm font-medium text-red-500 hover:bg-red-500/10"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </section>
+
+      {/* MODAL */}
 
       <ChapterModal
         isOpen={modalOpen}
-        onClose={closeModal}
+        onClose={handleCloseModal}
         onSubmit={handleSubmit}
         editingChapter={editingChapter}
         books={books}
-        defaultBookId={selectedBook}
+        defaultBookId={selectedBookId}
         isBangla={isBangla}
         loading={actionLoading}
       />

@@ -491,6 +491,7 @@ export default function BlogDetailsPage() {
           >
             {blog.content ? (
               <div
+                className="whitespace-pre-wrap break-words"
                 dangerouslySetInnerHTML={{
                   __html: blog.content,
                 }}

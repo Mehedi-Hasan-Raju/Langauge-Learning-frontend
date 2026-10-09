@@ -1,5 +1,4 @@
 
-import Navbar from "../components/Navbar";
 import HeroSection from "../components/HeroSection";
 import LearningLevels from "../components/LearningLevels";
 import BlogSection from "../components/BlogSection";
@@ -9,19 +8,13 @@ import MembersSection from "../components/MembersSection";
 
 export default function Home() {
   return (
-    <>
-      
-
-      <main>
-        <HeroSection />
-
-
-        <LearningLevels />
-        <BlogSection />
-        <AusbildungSection />
-        <ServicesSection />
-        <MembersSection />
-      </main>
-    </>
+    <main className="home-page">
+      <HeroSection />
+      <LearningLevels />
+      <BlogSection />
+      <AusbildungSection />
+      <ServicesSection />
+      <MembersSection />
+    </main>
   );
 }

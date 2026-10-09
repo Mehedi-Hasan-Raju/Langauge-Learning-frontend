@@ -21,6 +21,9 @@ export default function MainLayout({
   return (
     <>
       <Navbar />
+      {pathname !== "/" && (
+        <div className="h-20" aria-hidden="true" />
+      )}
       {children}
       <Footer />
     </>

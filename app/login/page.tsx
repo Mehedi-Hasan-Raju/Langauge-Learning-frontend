@@ -65,7 +65,17 @@ export default function LoginPage() {
         localStorage.setItem("user", JSON.stringify(data.user));
       }
 
-      router.push("/");
+      const returnTo = new URLSearchParams(window.location.search).get(
+        "returnTo"
+      );
+      const destination = returnTo
+        ? new URL(returnTo, window.location.origin)
+        : null;
+      router.push(
+        destination?.origin === window.location.origin
+          ? `${destination.pathname}${destination.search}${destination.hash}`
+          : "/"
+      );
 
     } catch (err) {
       setError(

@@ -187,7 +187,7 @@ export default function Navbar() {
 
   return (
     <header
-      className={`sticky top-0 z-50 w-full border-b backdrop-blur-2xl transition-colors duration-300 ${
+      className={`fixed inset-x-0 top-0 z-50 w-full border-b backdrop-blur-2xl transition-colors duration-300 ${
         isDark
           ? "border-white/10 bg-[#0B0F19]/80"
           : "border-slate-200 bg-white/80"

@@ -1,6 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 
 import { useLanguage } from "../../../context/LanguageContext";
 import { useTheme } from "../../../context/ThemeContext";
@@ -35,32 +39,30 @@ interface Book {
 interface BookManagementProps {
   token: string;
   levels: Level[];
+
   selectedLevelId?: string;
+  onSelectedLevelChange?: (
+    levelId: string
+  ) => void;
+
+  /*
+   * Global selected book from LearningPage
+   */
+  selectedBookId?: string;
+  onSelectedBookChange?: (
+    bookId: string
+  ) => void;
+
   onBooksChange?: () => void;
 }
-
-interface BookModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  onSubmit: (data: {
-    name: string;
-    author?: string;
-    levelId: string;
-  }) => Promise<void>;
-  editingBook: Book | null;
-  levels: Level[];
-  defaultLevelId: string;
-  isBangla: boolean;
-  loading: boolean;
-}
-
-const TypedBookModal =
-  BookModal as unknown as React.ComponentType<BookModalProps>;
 
 export default function BookManagement({
   token,
   levels,
   selectedLevelId = "",
+  onSelectedLevelChange,
+  selectedBookId = "",
+  onSelectedBookChange,
   onBooksChange,
 }: BookManagementProps) {
   const { language } = useLanguage();
@@ -70,37 +72,51 @@ export default function BookManagement({
   const isDark = theme === "dark";
 
   const [books, setBooks] = useState<Book[]>([]);
+
   const [selectedLevel, setSelectedLevel] =
     useState(selectedLevelId);
 
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] =
+    useState(false);
+
   const [actionLoading, setActionLoading] =
     useState(false);
 
-  const [modalOpen, setModalOpen] = useState(false);
+  const [modalOpen, setModalOpen] =
+    useState(false);
+
   const [editingBook, setEditingBook] =
     useState<Book | null>(null);
 
   /*
-   * Keep selected level synchronized with parent.
+   * ==========================================
+   * SYNC SELECTED LEVEL WITH PARENT
+   * ==========================================
    */
   useEffect(() => {
     setSelectedLevel(selectedLevelId);
   }, [selectedLevelId]);
 
   /*
-   * Fetch books whenever selected level changes.
+   * ==========================================
+   * FETCH BOOKS
+   * ==========================================
    */
-  useEffect(() => {
-    if (!selectedLevel) {
+  const fetchBooks = async (
+    levelId: string
+  ) => {
+    if (!levelId) {
       setBooks([]);
+
+      /*
+       * Clear selected book when there is
+       * no selected level.
+       */
+      onSelectedBookChange?.("");
+
       return;
     }
 
-    fetchBooks(selectedLevel);
-  }, [selectedLevel]);
-
-  const fetchBooks = async (levelId: string) => {
     try {
       setLoading(true);
 
@@ -112,63 +128,201 @@ export default function BookManagement({
 
       if (!response.ok) {
         throw new Error(
-          data.message || "Failed to fetch books"
+          data.message ||
+            "Failed to fetch books"
         );
       }
 
-      setBooks(data.books || []);
+      const fetchedBooks: Book[] =
+        data.books || [];
+
+      setBooks(fetchedBooks);
+
+      /*
+       * ======================================
+       * KEEP SELECTED BOOK VALID
+       * ======================================
+       *
+       * If current selected book still exists,
+       * keep it.
+       *
+       * Otherwise automatically select first
+       * available book.
+       */
+      const selectedBookStillExists =
+        selectedBookId &&
+        fetchedBooks.some(
+          (book) =>
+            book.id === selectedBookId
+        );
+
+      if (selectedBookStillExists) {
+        return;
+      }
+
+      const firstBookId =
+        fetchedBooks[0]?.id || "";
+
+      onSelectedBookChange?.(
+        firstBookId
+      );
     } catch (error) {
-      console.error("Fetch books error:", error);
+      console.error(
+        "Fetch books error:",
+        error
+      );
+
+      setBooks([]);
+
+      onSelectedBookChange?.("");
 
       alert(
         error instanceof Error
           ? error.message
           : "Failed to fetch books"
       );
-
-      setBooks([]);
     } finally {
       setLoading(false);
     }
   };
 
+  /*
+   * ==========================================
+   * FETCH WHEN LEVEL CHANGES
+   * ==========================================
+   */
+  useEffect(() => {
+    if (!selectedLevel) {
+      setBooks([]);
+      return;
+    }
+
+    fetchBooks(selectedLevel);
+
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedLevel]);
+
+  /*
+   * ==========================================
+   * TOTAL CHAPTERS
+   * ==========================================
+   */
   const totalChapters = useMemo(() => {
     return books.reduce(
       (total, book) =>
-        total + (book._count?.chapters ?? 0),
+        total +
+        (book._count?.chapters ?? 0),
       0
     );
   }, [books]);
 
+  /*
+   * ==========================================
+   * SELECTED LEVEL OBJECT
+   * ==========================================
+   */
   const selectedLevelObject = useMemo(() => {
     return levels.find(
-      (level) => level.id === selectedLevel
+      (level) =>
+        level.id === selectedLevel
     );
   }, [levels, selectedLevel]);
 
+  /*
+   * ==========================================
+   * SELECTED BOOK OBJECT
+   * ==========================================
+   */
+  const selectedBook = useMemo(() => {
+    return books.find(
+      (book) =>
+        book.id === selectedBookId
+    );
+  }, [books, selectedBookId]);
+
+  /*
+   * ==========================================
+   * LEVEL CHANGE
+   * ==========================================
+   */
+  const handleLevelChange = (
+    e: React.ChangeEvent<HTMLSelectElement>
+  ) => {
+    const levelId = e.target.value;
+
+    /*
+     * Update local state.
+     */
+    setSelectedLevel(levelId);
+
+    /*
+     * Update parent.
+     */
+    onSelectedLevelChange?.(
+      levelId
+    );
+  };
+
+  /*
+   * ==========================================
+   * BOOK SELECTION
+   * ==========================================
+   *
+   * THIS IS THE ONLY BOOK SELECTION
+   * CONTROL IN THE LEARNING PAGE.
+   * ==========================================
+   */
+  const handleBookChange = (
+    e: React.ChangeEvent<HTMLSelectElement>
+  ) => {
+    const bookId = e.target.value;
+
+    onSelectedBookChange?.(
+      bookId
+    );
+  };
+
+  /*
+   * ==========================================
+   * CREATE BOOK
+   * ==========================================
+   */
   const openCreateModal = () => {
     setEditingBook(null);
     setModalOpen(true);
   };
 
-  const openEditModal = (book: Book) => {
+  /*
+   * ==========================================
+   * EDIT BOOK
+   * ==========================================
+   */
+  const openEditModal = (
+    book: Book
+  ) => {
     setEditingBook(book);
     setModalOpen(true);
   };
 
+  /*
+   * ==========================================
+   * CLOSE MODAL
+   * ==========================================
+   */
   const closeModal = () => {
-    if (actionLoading) return;
+    if (actionLoading) {
+      return;
+    }
 
     setModalOpen(false);
     setEditingBook(null);
   };
 
-  const handleLevelChange = (
-    e: React.ChangeEvent<HTMLSelectElement>
-  ) => {
-    setSelectedLevel(e.target.value);
-  };
-
+  /*
+   * ==========================================
+   * CREATE / UPDATE BOOK
+   * ==========================================
+   */
   const handleSubmit = async (data: {
     name: string;
     author?: string;
@@ -181,40 +335,97 @@ export default function BookManagement({
         ? `${API_URL}/learning/books/${editingBook.id}`
         : `${API_URL}/learning/books`;
 
-      const method = editingBook ? "PATCH" : "POST";
+      const method = editingBook
+        ? "PATCH"
+        : "POST";
 
-      const response = await fetch(url, {
-        method,
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(data),
-      });
+      const response = await fetch(
+        url,
+        {
+          method,
+          headers: {
+            "Content-Type":
+              "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(data),
+        }
+      );
 
-      const result = await response.json();
+      const result =
+        await response.json();
 
       if (!response.ok) {
         throw new Error(
           result.message ||
             `Failed to ${
-              editingBook ? "update" : "create"
+              editingBook
+                ? "update"
+                : "create"
             } book`
         );
       }
 
+      /*
+       * If the book was moved to another
+       * level, switch to that level.
+       */
+      if (
+        data.levelId !==
+        selectedLevel
+      ) {
+        setSelectedLevel(
+          data.levelId
+        );
+
+        onSelectedLevelChange?.(
+          data.levelId
+        );
+      }
+
+      /*
+       * Get newly created/updated book ID
+       * when available.
+       */
+      const savedBook: Book | undefined =
+        result.book ||
+        result.data ||
+        result;
+
+      /*
+       * Close modal.
+       */
       setModalOpen(false);
       setEditingBook(null);
 
       /*
-       * If edited book moved to another level,
-       * refresh current level only.
+       * Refresh books of target level.
        */
-      await fetchBooks(selectedLevel);
+      await fetchBooks(
+        data.levelId
+      );
 
+      /*
+       * Select saved book if backend
+       * returned it.
+       */
+      if (
+        savedBook?.id
+      ) {
+        onSelectedBookChange?.(
+          savedBook.id
+        );
+      }
+
+      /*
+       * Notify parent.
+       */
       onBooksChange?.();
     } catch (error) {
-      console.error("Book save error:", error);
+      console.error(
+        "Book save error:",
+        error
+      );
 
       alert(
         error instanceof Error
@@ -226,14 +437,24 @@ export default function BookManagement({
     }
   };
 
-  const handleDelete = async (book: Book) => {
-    const confirmed = window.confirm(
-      isBangla
-        ? `"${book.name}" Book delete করতে চান?`
-        : `Are you sure you want to delete "${book.name}"?`
-    );
+  /*
+   * ==========================================
+   * DELETE BOOK
+   * ==========================================
+   */
+  const handleDelete = async (
+    book: Book
+  ) => {
+    const confirmed =
+      window.confirm(
+        isBangla
+          ? `"${book.name}" Book delete করতে চান?`
+          : `Are you sure you want to delete "${book.name}"?`
+      );
 
-    if (!confirmed) return;
+    if (!confirmed) {
+      return;
+    }
 
     try {
       setActionLoading(true);
@@ -248,19 +469,40 @@ export default function BookManagement({
         }
       );
 
-      const result = await response.json();
+      const result =
+        await response.json();
 
       if (!response.ok) {
         throw new Error(
-          result.message || "Failed to delete book"
+          result.message ||
+            "Failed to delete book"
         );
       }
 
-      await fetchBooks(selectedLevel);
+      /*
+       * If deleted book was selected,
+       * clear selection first.
+       */
+      if (
+        selectedBookId ===
+        book.id
+      ) {
+        onSelectedBookChange?.("");
+      }
+
+      /*
+       * Refresh current level.
+       */
+      await fetchBooks(
+        selectedLevel
+      );
 
       onBooksChange?.();
     } catch (error) {
-      console.error("Delete book error:", error);
+      console.error(
+        "Delete book error:",
+        error
+      );
 
       alert(
         error instanceof Error
@@ -275,13 +517,13 @@ export default function BookManagement({
   return (
     <>
       <section className="mt-10 space-y-6">
-        {/* Header */}
+        {/* ==================================
+            HEADER
+        =================================== */}
         <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
           <div>
             <h2 className="text-2xl font-bold tracking-tight">
-              {isBangla
-                ? "Book Management"
-                : "Book Management"}
+              Book Management
             </h2>
 
             <p
@@ -298,11 +540,19 @@ export default function BookManagement({
           </div>
 
           <button
-            onClick={openCreateModal}
-            disabled={levels.length === 0}
+            type="button"
+            onClick={
+              openCreateModal
+            }
+            disabled={
+              levels.length === 0 ||
+              actionLoading
+            }
             className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-rose-600 to-amber-500 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-rose-500/10 transition hover:scale-[1.02] hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            <span className="text-lg">+</span>
+            <span className="text-lg">
+              +
+            </span>
 
             {isBangla
               ? "Add Book"
@@ -310,7 +560,9 @@ export default function BookManagement({
           </button>
         </div>
 
-        {/* Level Filter */}
+        {/* ==================================
+            LEVEL + BOOK SELECTION
+        =================================== */}
         <div
           className={`rounded-2xl border p-5 ${
             isDark
@@ -318,8 +570,11 @@ export default function BookManagement({
               : "border-slate-200 bg-white shadow-sm"
           }`}
         >
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            <div className="flex-1">
+          <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+            {/* ==============================
+                LEVEL SELECT
+            =============================== */}
+            <div>
               <label
                 className={`mb-2 block text-sm font-medium ${
                   isDark
@@ -333,8 +588,12 @@ export default function BookManagement({
               </label>
 
               <select
-                value={selectedLevel}
-                onChange={handleLevelChange}
+                value={
+                  selectedLevel
+                }
+                onChange={
+                  handleLevelChange
+                }
                 className={`w-full rounded-xl border px-4 py-3 text-sm outline-none transition ${
                   isDark
                     ? "border-white/10 bg-[#111827] text-white focus:border-rose-500/50"
@@ -347,39 +606,170 @@ export default function BookManagement({
                     : "Select a level"}
                 </option>
 
-                {levels.map((level) => (
-                  <option
-                    key={level.id}
-                    value={level.id}
-                  >
-                    {level.name}
-                  </option>
-                ))}
+                {levels.map(
+                  (level) => (
+                    <option
+                      key={
+                        level.id
+                      }
+                      value={
+                        level.id
+                      }
+                    >
+                      {level.name}
+                    </option>
+                  )
+                )}
               </select>
             </div>
 
-            {selectedLevelObject && (
-              <div
-                className={`rounded-xl px-4 py-3 text-sm ${
+            {/* ==============================
+                BOOK SELECT
+            =============================== */}
+            <div>
+              <label
+                className={`mb-2 block text-sm font-medium ${
                   isDark
-                    ? "bg-white/5 text-slate-300"
-                    : "bg-slate-50 text-slate-600"
+                    ? "text-slate-300"
+                    : "text-slate-700"
                 }`}
               >
-                <span className="font-semibold">
-                  {selectedLevelObject.name}
-                </span>
-                <span className="mx-2 opacity-40">
-                  •
-                </span>
-                {books.length}{" "}
-                {isBangla ? "Books" : "Books"}
-              </div>
-            )}
+                {isBangla
+                  ? "Select Book"
+                  : "Select Book"}
+              </label>
+
+              <select
+                value={
+                  selectedBookId
+                }
+                onChange={
+                  handleBookChange
+                }
+                disabled={
+                  !selectedLevel ||
+                  books.length ===
+                    0 ||
+                  loading
+                }
+                className={`w-full rounded-xl border px-4 py-3 text-sm outline-none transition ${
+                  isDark
+                    ? "border-white/10 bg-[#111827] text-white focus:border-rose-500/50 disabled:bg-[#0f172a]"
+                    : "border-slate-200 bg-white text-slate-900 focus:border-rose-400 disabled:bg-slate-50"
+                }`}
+              >
+                <option value="">
+                  {!selectedLevel
+                    ? isBangla
+                      ? "প্রথমে Level select করুন"
+                      : "Select a level first"
+                    : loading
+                    ? "Loading books..."
+                    : books.length ===
+                      0
+                    ? isBangla
+                      ? "কোনো Book নেই"
+                      : "No books available"
+                    : isBangla
+                    ? "Book select করুন"
+                    : "Select a book"}
+                </option>
+
+                {books.map(
+                  (book) => (
+                    <option
+                      key={
+                        book.id
+                      }
+                      value={
+                        book.id
+                      }
+                    >
+                      {book.name}
+                      {book.author
+                        ? ` — ${book.author}`
+                        : ""}
+                    </option>
+                  )
+                )}
+              </select>
+            </div>
           </div>
+
+          {/* ==============================
+              SELECTED BOOK INFO
+          =============================== */}
+          {selectedBook && (
+            <div
+              className={`mt-5 flex flex-col gap-3 rounded-xl border p-4 sm:flex-row sm:items-center sm:justify-between ${
+                isDark
+                  ? "border-rose-500/20 bg-rose-500/5"
+                  : "border-rose-100 bg-rose-50"
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <div
+                  className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-xl ${
+                    isDark
+                      ? "bg-gradient-to-br from-rose-500/20 to-amber-500/20"
+                      : "bg-white"
+                  }`}
+                >
+                  📖
+                </div>
+
+                <div>
+                  <p
+                    className={`text-xs font-medium ${
+                      isDark
+                        ? "text-slate-400"
+                        : "text-slate-500"
+                    }`}
+                  >
+                    {isBangla
+                      ? "Selected Book"
+                      : "Selected Book"}
+                  </p>
+
+                  <p className="font-semibold">
+                    {selectedBook.name}
+                  </p>
+
+                  {selectedBook.author && (
+                    <p
+                      className={`mt-0.5 text-xs ${
+                        isDark
+                          ? "text-slate-500"
+                          : "text-slate-400"
+                      }`}
+                    >
+                      {selectedBook.author}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div
+                className={`rounded-lg px-3 py-2 text-xs ${
+                  isDark
+                    ? "bg-white/5 text-slate-300"
+                    : "bg-white text-slate-600"
+                }`}
+              >
+                {selectedBook._count
+                  ?.chapters ??
+                  0}{" "}
+                {isBangla
+                  ? "Chapters"
+                  : "Chapters"}
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* Stats */}
+        {/* ==================================
+            STATS
+        =================================== */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div
             className={`rounded-2xl border p-5 ${
@@ -430,7 +820,9 @@ export default function BookManagement({
           </div>
         </div>
 
-        {/* Table */}
+        {/* ==================================
+            BOOK TABLE
+        =================================== */}
         <div
           className={`overflow-hidden rounded-2xl border ${
             isDark
@@ -465,7 +857,7 @@ export default function BookManagement({
                         : "text-slate-500"
                     }`}
                   >
-                    {isBangla ? "Book" : "Book"}
+                    Book
                   </th>
 
                   <th
@@ -475,7 +867,7 @@ export default function BookManagement({
                         : "text-slate-500"
                     }`}
                   >
-                    {isBangla ? "Author" : "Author"}
+                    Author
                   </th>
 
                   <th
@@ -485,7 +877,7 @@ export default function BookManagement({
                         : "text-slate-500"
                     }`}
                   >
-                    {isBangla ? "Level" : "Level"}
+                    Level
                   </th>
 
                   <th
@@ -495,9 +887,7 @@ export default function BookManagement({
                         : "text-slate-500"
                     }`}
                   >
-                    {isBangla
-                      ? "Chapters"
-                      : "Chapters"}
+                    Chapters
                   </th>
 
                   <th
@@ -507,9 +897,7 @@ export default function BookManagement({
                         : "text-slate-500"
                     }`}
                   >
-                    {isBangla
-                      ? "Actions"
-                      : "Actions"}
+                    Actions
                   </th>
                 </tr>
               </thead>
@@ -546,12 +934,11 @@ export default function BookManagement({
                           : "text-slate-500"
                       }`}
                     >
-                      {isBangla
-                        ? "Loading..."
-                        : "Loading..."}
+                      Loading...
                     </td>
                   </tr>
-                ) : books.length === 0 ? (
+                ) : books.length ===
+                  0 ? (
                   <tr>
                     <td
                       colSpan={6}
@@ -587,133 +974,217 @@ export default function BookManagement({
                     </td>
                   </tr>
                 ) : (
-                  books.map((book, index) => (
-                    <tr
-                      key={book.id}
-                      className={`transition ${
-                        isDark
-                          ? "hover:bg-white/[0.025]"
-                          : "hover:bg-slate-50"
-                      }`}
-                    >
-                      <td className="px-6 py-4 text-sm">
-                        {index + 1}
-                      </td>
+                  books.map(
+                    (
+                      book,
+                      index
+                    ) => {
+                      const isSelected =
+                        book.id ===
+                        selectedBookId;
 
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-3">
-                          <div
-                            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-lg ${
-                              isDark
-                                ? "bg-gradient-to-br from-rose-500/20 to-amber-500/20"
+                      return (
+                        <tr
+                          key={
+                            book.id
+                          }
+                          onClick={() =>
+                            onSelectedBookChange?.(
+                              book.id
+                            )
+                          }
+                          className={`cursor-pointer transition ${
+                            isSelected
+                              ? isDark
+                                ? "bg-rose-500/10"
                                 : "bg-rose-50"
-                            }`}
-                          >
-                            📖
-                          </div>
+                              : isDark
+                              ? "hover:bg-white/[0.025]"
+                              : "hover:bg-slate-50"
+                          }`}
+                        >
+                          <td className="px-6 py-4 text-sm">
+                            {index +
+                              1}
+                          </td>
 
-                          <div>
-                            <p className="font-semibold">
-                              {book.name}
-                            </p>
+                          <td className="px-6 py-4">
+                            <div className="flex items-center gap-3">
+                              <div
+                                className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-lg ${
+                                  isSelected
+                                    ? isDark
+                                      ? "bg-gradient-to-br from-rose-500/30 to-amber-500/30"
+                                      : "bg-rose-100"
+                                    : isDark
+                                    ? "bg-gradient-to-br from-rose-500/20 to-amber-500/20"
+                                    : "bg-rose-50"
+                                }`}
+                              >
+                                📖
+                              </div>
 
-                            <p
-                              className={`mt-0.5 text-xs ${
-                                isDark
+                              <div>
+                                <div className="flex items-center gap-2">
+                                  <p className="font-semibold">
+                                    {
+                                      book.name
+                                    }
+                                  </p>
+
+                                  {isSelected && (
+                                    <span className="rounded-full bg-rose-500/10 px-2 py-0.5 text-[10px] font-semibold text-rose-400">
+                                      Selected
+                                    </span>
+                                  )}
+                                </div>
+
+                                <p
+                                  className={`mt-0.5 text-xs ${
+                                    isDark
+                                      ? "text-slate-500"
+                                      : "text-slate-400"
+                                  }`}
+                                >
+                                  {book.id.slice(
+                                    0,
+                                    8
+                                  )}
+                                  ...
+                                </p>
+                              </div>
+                            </div>
+                          </td>
+
+                          <td className="px-6 py-4">
+                            <span
+                              className={`text-sm ${
+                                book.author
+                                  ? ""
+                                  : isDark
                                   ? "text-slate-500"
                                   : "text-slate-400"
                               }`}
                             >
-                              {book.id.slice(0, 8)}...
-                            </p>
-                          </div>
-                        </div>
-                      </td>
+                              {book.author ||
+                                "Not specified"}
+                            </span>
+                          </td>
 
-                      <td className="px-6 py-4">
-                        <span
-                          className={`text-sm ${
-                            book.author
-                              ? ""
-                              : isDark
-                              ? "text-slate-500"
-                              : "text-slate-400"
-                          }`}
-                        >
-                          {book.author ||
-                            (isBangla
-                              ? "Not specified"
-                              : "Not specified")}
-                        </span>
-                      </td>
+                          <td className="px-6 py-4">
+                            <span
+                              className={`inline-flex rounded-lg px-3 py-1 text-xs font-semibold ${
+                                isDark
+                                  ? "bg-white/5 text-slate-300"
+                                  : "bg-slate-100 text-slate-600"
+                              }`}
+                            >
+                              {book.level
+                                ?.name ||
+                                selectedLevelObject?.name ||
+                                "—"}
+                            </span>
+                          </td>
 
-                      <td className="px-6 py-4">
-                        <span
-                          className={`inline-flex rounded-lg px-3 py-1 text-xs font-semibold ${
-                            isDark
-                              ? "bg-white/5 text-slate-300"
-                              : "bg-slate-100 text-slate-600"
-                          }`}
-                        >
-                          {book.level?.name ||
-                            selectedLevelObject?.name ||
-                            "—"}
-                        </span>
-                      </td>
+                          <td className="px-6 py-4">
+                            <span className="text-sm font-medium">
+                              {book
+                                ._count
+                                ?.chapters ??
+                                0}
+                            </span>
+                          </td>
 
-                      <td className="px-6 py-4">
-                        <span className="text-sm font-medium">
-                          {book._count?.chapters ?? 0}
-                        </span>
-                      </td>
+                          <td className="px-6 py-4">
+                            <div
+                              className="flex justify-end gap-2"
+                              onClick={(
+                                e
+                              ) =>
+                                e.stopPropagation()
+                              }
+                            >
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  openEditModal(
+                                    book
+                                  )
+                                }
+                                disabled={
+                                  actionLoading
+                                }
+                                className={`rounded-lg px-3 py-2 text-xs font-medium transition ${
+                                  isDark
+                                    ? "bg-white/5 text-slate-300 hover:bg-white/10"
+                                    : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                                } disabled:cursor-not-allowed disabled:opacity-50`}
+                              >
+                                Edit
+                              </button>
 
-                      <td className="px-6 py-4">
-                        <div className="flex justify-end gap-2">
-                          <button
-                            onClick={() =>
-                              openEditModal(book)
-                            }
-                            disabled={actionLoading}
-                            className={`rounded-lg px-3 py-2 text-xs font-medium transition ${
-                              isDark
-                                ? "bg-white/5 text-slate-300 hover:bg-white/10"
-                                : "bg-slate-100 text-slate-700 hover:bg-slate-200"
-                            }`}
-                          >
-                            {isBangla
-                              ? "Edit"
-                              : "Edit"}
-                          </button>
-
-                          <button
-                            onClick={() =>
-                              handleDelete(book)
-                            }
-                            disabled={actionLoading}
-                            className="rounded-lg bg-rose-500/10 px-3 py-2 text-xs font-medium text-rose-400 transition hover:bg-rose-500/20 disabled:opacity-50"
-                          >
-                            {isBangla
-                              ? "Delete"
-                              : "Delete"}
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleDelete(
+                                    book
+                                  )
+                                }
+                                disabled={
+                                  actionLoading
+                                }
+                                className="rounded-lg bg-rose-500/10 px-3 py-2 text-xs font-medium text-rose-400 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    }
+                  )
                 )}
               </tbody>
             </table>
           </div>
         </div>
+
+        {/* ==================================
+            HELPER TEXT
+        =================================== */}
+        {selectedBook && (
+          <div
+            className={`rounded-xl border px-4 py-3 text-sm ${
+              isDark
+                ? "border-white/10 bg-white/[0.02] text-slate-400"
+                : "border-slate-200 bg-slate-50 text-slate-500"
+            }`}
+          >
+            <span className="font-medium">
+              {isBangla
+                ? "Tip:"
+                : "Tip:"}
+            </span>{" "}
+            {isBangla
+              ? "নিচের Chapter এবং Vocabulary management এখন এই selected Book অনুযায়ী কাজ করবে।"
+              : "Chapter and Vocabulary management below will now work with the selected book."}
+          </div>
+        )}
       </section>
 
-      <TypedBookModal
+      {/* ====================================
+          BOOK MODAL
+      ===================================== */}
+      <BookModal
+        key={`${modalOpen ? "open" : "closed"}-${editingBook?.id ?? "new"}-${selectedLevel}`}
         isOpen={modalOpen}
         onClose={closeModal}
         onSubmit={handleSubmit}
         editingBook={editingBook}
         levels={levels}
-        defaultLevelId={selectedLevel}
+        defaultLevelId={
+          selectedLevel
+        }
         isBangla={isBangla}
         loading={actionLoading}
       />
