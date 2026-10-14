@@ -144,6 +144,10 @@ export default function LearningLevelPage() {
   const selectedChapter = chapters.find(
     (chapter) => chapter.id === selectedChapterId
   );
+  const activeContentTab: ChapterContentTab =
+    selectedChapter?.sectionNo && contentTab === "vocabulary"
+      ? "vocabulary-practice"
+      : contentTab;
   const loginHref = `/login?returnTo=${encodeURIComponent(
     `/learning-levels/${encodeURIComponent(levelSlug)}`
   )}`;
@@ -622,7 +626,7 @@ export default function LearningLevelPage() {
                 )}
               </div>
 
-              {selectedChapter && contentTab === "vocabulary" && (
+              {selectedChapter && activeContentTab === "vocabulary" && (
                 <label className="relative block sm:w-64">
                   <Search
                     size={16}
@@ -652,28 +656,30 @@ export default function LearningLevelPage() {
                 role="tablist"
                 aria-label={isBangla ? "পাঠের ধরন" : "Lesson content"}
               >
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={contentTab === "vocabulary"}
-                  onClick={() => setContentTab("vocabulary")}
-                  className={`inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition ${
-                    contentTab === "vocabulary"
-                      ? "bg-gradient-to-r from-red-500 to-amber-400 text-white shadow"
-                      : mutedTextClass
-                  }`}
-                >
-                  <BookOpen size={16} />
-                  {isBangla ? "শব্দভাণ্ডার" : "Vocabulary"}
-                </button>
+                {selectedChapter.sectionNo === 0 && (
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={activeContentTab === "vocabulary"}
+                    onClick={() => setContentTab("vocabulary")}
+                    className={`inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition ${
+                      activeContentTab === "vocabulary"
+                        ? "bg-gradient-to-r from-red-500 to-amber-400 text-white shadow"
+                        : mutedTextClass
+                    }`}
+                  >
+                    <BookOpen size={16} />
+                    {isBangla ? "শব্দভাণ্ডার" : "Vocabulary"}
+                  </button>
+                )}
                 {selectedChapter.sectionNo > 0 && (
                   <button
                     type="button"
                     role="tab"
-                    aria-selected={contentTab === "vocabulary-practice"}
+                    aria-selected={activeContentTab === "vocabulary-practice"}
                     onClick={() => setContentTab("vocabulary-practice")}
                     className={`inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition ${
-                      contentTab === "vocabulary-practice"
+                      activeContentTab === "vocabulary-practice"
                         ? "bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow"
                         : mutedTextClass
                     }`}
@@ -685,10 +691,10 @@ export default function LearningLevelPage() {
                 <button
                   type="button"
                   role="tab"
-                  aria-selected={contentTab === "grammar"}
+                  aria-selected={activeContentTab === "grammar"}
                   onClick={() => setContentTab("grammar")}
                   className={`inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition ${
-                    contentTab === "grammar"
+                    activeContentTab === "grammar"
                       ? "bg-gradient-to-r from-violet-500 to-indigo-500 text-white shadow"
                       : mutedTextClass
                   }`}
@@ -705,7 +711,7 @@ export default function LearningLevelPage() {
               </div>
             )}
 
-            {contentTab === "grammar" && selectedChapter ? (
+            {activeContentTab === "grammar" && selectedChapter ? (
               <GrammarReader
                 key={selectedChapter.id}
                 chapterId={selectedChapter.id}
@@ -714,7 +720,7 @@ export default function LearningLevelPage() {
                 showPractice={selectedChapter.sectionNo > 0}
               />
             ) : selectedChapter &&
-              contentTab === "vocabulary-practice" &&
+              activeContentTab === "vocabulary-practice" &&
               selectedChapter.sectionNo > 0 ? (
               <VocabularyExerciseReader
                 key={selectedChapter.id}
