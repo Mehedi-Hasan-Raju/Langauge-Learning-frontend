@@ -12,11 +12,13 @@ import {
   Headphones,
   LoaderCircle,
   LockKeyhole,
+  NotebookText,
   Search,
   Volume2,
 } from "lucide-react";
 import { useLanguage } from "../../../context/LanguageContext";
 import { useTheme } from "../../../context/ThemeContext";
+import GrammarReader from "../../../components/learning/GrammarReader";
 
 const API_URL = "http://localhost:5000/api";
 
@@ -57,6 +59,8 @@ interface Vocabulary {
   audioUrl?: string | null;
   chapterId: string;
 }
+
+type ChapterContentTab = "vocabulary" | "grammar";
 
 class LearningApiError extends Error {
   constructor(
@@ -110,6 +114,8 @@ export default function LearningLevelPage() {
   const [vocabulary, setVocabulary] = useState<Vocabulary[]>([]);
   const [selectedBookId, setSelectedBookId] = useState("");
   const [selectedChapterId, setSelectedChapterId] = useState("");
+  const [contentTab, setContentTab] =
+    useState<ChapterContentTab>("vocabulary");
   const [search, setSearch] = useState("");
   const [token] = useState(() =>
     typeof window === "undefined" ? "" : localStorage.getItem("token") ?? ""
@@ -610,7 +616,7 @@ export default function LearningLevelPage() {
                 )}
               </div>
 
-              {selectedChapter && (
+              {selectedChapter && contentTab === "vocabulary" && (
                 <label className="relative block sm:w-64">
                   <Search
                     size={16}
@@ -630,7 +636,56 @@ export default function LearningLevelPage() {
               )}
             </div>
 
-            {!selectedChapter && !loadingChapters ? (
+            {selectedChapter && (
+              <div
+                className={`mb-5 inline-flex rounded-xl border p-1 ${
+                  isDark
+                    ? "border-white/10 bg-white/[0.025]"
+                    : "border-slate-200 bg-slate-50"
+                }`}
+                role="tablist"
+                aria-label={isBangla ? "পাঠের ধরন" : "Lesson content"}
+              >
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={contentTab === "vocabulary"}
+                  onClick={() => setContentTab("vocabulary")}
+                  className={`inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition ${
+                    contentTab === "vocabulary"
+                      ? "bg-gradient-to-r from-red-500 to-amber-400 text-white shadow"
+                      : mutedTextClass
+                  }`}
+                >
+                  <BookOpen size={16} />
+                  {isBangla ? "শব্দভাণ্ডার" : "Vocabulary"}
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={contentTab === "grammar"}
+                  onClick={() => setContentTab("grammar")}
+                  className={`inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition ${
+                    contentTab === "grammar"
+                      ? "bg-gradient-to-r from-violet-500 to-indigo-500 text-white shadow"
+                      : mutedTextClass
+                  }`}
+                >
+                  <NotebookText size={16} />
+                  {isBangla ? "ব্যাকরণ" : "Grammar"}
+                </button>
+              </div>
+            )}
+
+            {contentTab === "grammar" && selectedChapter ? (
+              <GrammarReader
+                key={selectedChapter.id}
+                chapterId={selectedChapter.id}
+                token={token}
+                loginHref={loginHref}
+              />
+            ) : (
+              !selectedChapter && !loadingChapters ? (
               <div className={`rounded-3xl border p-9 text-center ${surfaceClass}`}>
                 <BookOpen className="mx-auto text-amber-300" size={30} />
                 <h3 className="mt-4 text-lg font-bold">
@@ -834,6 +889,7 @@ export default function LearningLevelPage() {
                   </button>
                 </div>
               </>
+              )
             )}
           </section>
         </div>

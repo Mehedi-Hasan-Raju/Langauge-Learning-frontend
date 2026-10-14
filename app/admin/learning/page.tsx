@@ -9,6 +9,7 @@ import LevelManagement from "../../../components/admin/learning/LevelManagement"
 import BookManagement from "../../../components/admin/learning/BookManagement";
 import ChapterManagement from "../../../components/admin/learning/ChapterManagement";
 import VocabularyManagement from "../../../components/admin/learning/VocabularyManagement";
+import GrammarManagement from "../../../components/admin/learning/GrammarManagement";
 
 const API_URL = "http://localhost:5000/api";
 
@@ -423,6 +424,11 @@ export default function LearningPage() {
             onSelectedChapterChange={
               setSelectedChapterId
             }
+          />
+
+          <GrammarManagement
+            token={token}
+            selectedChapterId={selectedChapterId}
           />
         </main>
       </div>
