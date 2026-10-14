@@ -30,6 +30,12 @@ const menuItems = [
     icon: "book",
   },
   {
+    label: "Grammar Practice",
+    bn: "গ্রামার প্র্যাকটিস",
+    href: "/admin/grammar-practice",
+    icon: "practice",
+  },
+  {
     label: "Blogs",
     bn: "ব্লগ",
     href: "/admin/blogs",
@@ -107,6 +113,16 @@ function MenuIcon({ type }: { type: string }) {
       <svg {...common}>
         <path d="M4 4h16v16H4z" />
         <path d="M8 8h8M8 12h8M8 16h5" />
+      </svg>
+    );
+  }
+
+  if (type === "practice") {
+    return (
+      <svg {...common}>
+        <path d="M5 4h14v16H5z" />
+        <path d="M8 8h3M8 12h3M8 16h3" />
+        <path d="m14 12 1.5 1.5L19 10" />
       </svg>
     );
   }

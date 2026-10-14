@@ -17,6 +17,7 @@ interface GrammarQuestion {
   options: unknown;
   explanation?: string | null;
   grammarId: string;
+  practiceChapterId?: string;
 }
 
 interface GrammarTopic {
@@ -53,6 +54,7 @@ interface GrammarManagementProps {
   token: string;
   selectedChapterId: string;
   chapterTitle?: string;
+  practiceOnly?: boolean;
 }
 
 function jsonArrayToLines(value: unknown): string {
@@ -85,6 +87,7 @@ export default function GrammarManagement({
   token,
   selectedChapterId,
   chapterTitle,
+  practiceOnly = false,
 }: GrammarManagementProps) {
   const { language } = useLanguage();
   const { theme } = useTheme();
@@ -281,6 +284,7 @@ export default function GrammarManagement({
           answer: fields.answer.trim(),
           options: fields.type === "MULTIPLE_CHOICE" ? options : null,
           explanation: fields.explanation.trim() || null,
+          practiceChapterId: selectedChapterId,
           ...(!isEditing && { grammarId: selectedTopic.id }),
         }),
       }
@@ -407,44 +411,85 @@ export default function GrammarManagement({
             </div>
             <div>
               <h2 className={`text-xl font-bold sm:text-2xl ${textClass}`}>
-                {isBangla ? "Grammar Management" : "Grammar Management"}
+                {practiceOnly
+                  ? isBangla
+                    ? "Grammar Practice"
+                    : "Grammar Practice"
+                  : "Grammar Management"}
               </h2>
               <p className={`text-sm ${mutedClass}`}>
                 {chapterTitle
                   ? `${chapterTitle} · `
                   : ""}
-                {isBangla
-                  ? "নির্বাচিত chapter-এর topics ও exercises পরিচালনা করুন"
-                  : "Manage topics and exercises for the selected chapter"}
+                {practiceOnly
+                  ? isBangla
+                    ? "প্রশ্ন ও সঠিক উত্তর যোগ করুন—learner-রা chapter-এর practice-এ এগুলো পাবে"
+                    : "Add practice questions and expected answers for learners"
+                  : isBangla
+                    ? "নির্বাচিত chapter-এর topics ও exercises পরিচালনা করুন"
+                    : "Manage topics and exercises for the selected chapter"}
               </p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={() => openTopicForm()}
-            disabled={!selectedChapterId || saving}
-            className="rounded-xl bg-gradient-to-r from-violet-500 to-indigo-500 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-violet-500/20 transition hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            + {isBangla ? "নতুন Grammar Topic" : "Add Grammar Topic"}
-          </button>
+          {!practiceOnly && (
+            <button
+              type="button"
+              onClick={() => openTopicForm()}
+              disabled={!selectedChapterId || saving}
+              className="rounded-xl bg-gradient-to-r from-violet-500 to-indigo-500 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-violet-500/20 transition hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              + {isBangla ? "নতুন Grammar Topic" : "Add Grammar Topic"}
+            </button>
+          )}
         </div>
 
         {selectedChapterId && (
           <div className="mb-5 flex flex-col gap-3 sm:flex-row">
-            <input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder={
-                isBangla ? "Topic খুঁজুন..." : "Search grammar topics..."
-              }
-              className={`w-full rounded-xl border px-4 py-3 text-sm outline-none sm:max-w-sm ${
-                isDark
-                  ? "border-white/10 bg-[#0B0F19] text-white placeholder:text-slate-600"
-                  : "border-slate-200 bg-white text-slate-900 placeholder:text-slate-400"
-              }`}
-            />
+            {practiceOnly ? (
+              <label className={`w-full text-sm font-medium sm:max-w-sm ${textClass}`}>
+                {isBangla ? "Grammar topic" : "Grammar topic"}
+                <select
+                  value={selectedTopicId}
+                  onChange={(event) => setSelectedTopicId(event.target.value)}
+                  className={`mt-2 w-full rounded-xl border px-4 py-3 text-sm outline-none ${
+                    isDark
+                      ? "border-white/10 bg-[#0B0F19] text-white"
+                      : "border-slate-200 bg-white text-slate-900"
+                  }`}
+                  disabled={topics.length === 0}
+                >
+                  {topics.length === 0 ? (
+                    <option value="">
+                      {isBangla
+                        ? "এই chapter-এ কোনো topic নেই"
+                        : "No grammar topics in this chapter"}
+                    </option>
+                  ) : (
+                    topics.map((topic) => (
+                      <option key={topic.id} value={topic.id}>
+                        {topic.title}
+                      </option>
+                    ))
+                  )}
+                </select>
+              </label>
+            ) : (
+              <input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder={
+                  isBangla ? "Topic খুঁজুন..." : "Search grammar topics..."
+                }
+                className={`w-full rounded-xl border px-4 py-3 text-sm outline-none sm:max-w-sm ${
+                  isDark
+                    ? "border-white/10 bg-[#0B0F19] text-white placeholder:text-slate-600"
+                    : "border-slate-200 bg-white text-slate-900 placeholder:text-slate-400"
+                }`}
+              />
+            )}
             <p className={`self-center text-sm ${mutedClass}`}>
-              {topics.length} {isBangla ? "টি topic" : "topics"} ·{" "}
+              {!practiceOnly &&
+                `${topics.length} ${isBangla ? "টি topic" : "topics"} · `}
               {topics.reduce((total, topic) => total + topic.questions.length, 0)}{" "}
               {isBangla ? "টি প্রশ্ন" : "questions"}
             </p>
@@ -473,7 +518,11 @@ export default function GrammarManagement({
         ) : filteredTopics.length === 0 ? (
           <div className={`rounded-2xl border border-dashed p-10 text-center ${mutedClass} ${isDark ? "border-white/10" : "border-slate-300"}`}>
             <p className={`font-medium ${textClass}`}>
-              {search
+              {practiceOnly
+                ? isBangla
+                  ? "এই chapter-এ এখনো Grammar topic নেই।"
+                  : "This chapter has no grammar topics yet."
+                : search
                 ? isBangla
                   ? "কোনো topic পাওয়া যায়নি।"
                   : "No matching topics found."
@@ -481,17 +530,29 @@ export default function GrammarManagement({
                   ? "এই chapter-এ এখনো grammar topic নেই।"
                   : "No grammar topics have been added to this chapter yet."}
             </p>
-            {!search && (
+            {!search && !practiceOnly && (
               <p className="mt-1 text-sm">
                 {isBangla
                   ? "নতুন topic যোগ করতে উপরের button ব্যবহার করুন।"
                   : "Use Add Grammar Topic to create the first one."}
               </p>
             )}
+            {practiceOnly && (
+              <p className="mt-1 text-sm">
+                {isBangla
+                  ? "প্রথমে Learning Management থেকে এই chapter-এ Grammar topic তৈরি করুন।"
+                  : "Create a grammar topic for this chapter in Learning Management first."}
+              </p>
+            )}
           </div>
         ) : (
-          <div className="grid gap-5 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-            <div className="space-y-3">
+          <div
+            className={`grid gap-5 ${
+              practiceOnly ? "" : "xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]"
+            }`}
+          >
+            {!practiceOnly && (
+              <div className="space-y-3">
               {filteredTopics.map((topic) => {
                 const active = topic.id === selectedTopicId;
                 return (
@@ -546,18 +607,23 @@ export default function GrammarManagement({
                   </article>
                 );
               })}
-            </div>
+              </div>
+            )}
 
             {selectedTopic ? (
               <div className={`rounded-2xl border p-5 ${cardClass}`}>
                 <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
                   <div>
-                    <p className="text-xs font-bold uppercase tracking-[0.15em] text-violet-400">
-                      {isBangla ? "Grammar Topic" : "Grammar Topic"}
-                    </p>
-                    <h3 className={`mt-1 text-xl font-bold ${textClass}`}>
-                      {selectedTopic.title}
-                    </h3>
+                    {!practiceOnly && (
+                      <>
+                        <p className="text-xs font-bold uppercase tracking-[0.15em] text-violet-400">
+                          {isBangla ? "Grammar Topic" : "Grammar Topic"}
+                        </p>
+                        <h3 className={`mt-1 text-xl font-bold ${textClass}`}>
+                          {selectedTopic.title}
+                        </h3>
+                      </>
+                    )}
                   </div>
                   <button
                     type="button"
@@ -569,11 +635,13 @@ export default function GrammarManagement({
                   </button>
                 </div>
 
-                <p className={`mt-4 whitespace-pre-wrap text-sm leading-7 ${mutedClass}`}>
-                  {selectedTopic.explanation}
-                </p>
+                {!practiceOnly && (
+                  <>
+                    <p className={`mt-4 whitespace-pre-wrap text-sm leading-7 ${mutedClass}`}>
+                      {selectedTopic.explanation}
+                    </p>
 
-                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2">
                   {[
                     {
                       title: isBangla ? "Rules" : "Rules",
@@ -612,17 +680,19 @@ export default function GrammarManagement({
                       </div>
                     );
                   })}
-                </div>
+                    </div>
 
-                {selectedTopic.videoUrl && (
-                  <a
-                    href={selectedTopic.videoUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="mt-4 inline-flex text-sm font-medium text-violet-400 hover:text-violet-300"
-                  >
-                    {isBangla ? "ভিডিও খুলুন ↗" : "Open lesson video ↗"}
-                  </a>
+                    {selectedTopic.videoUrl && (
+                      <a
+                        href={selectedTopic.videoUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="mt-4 inline-flex text-sm font-medium text-violet-400 hover:text-violet-300"
+                      >
+                        {isBangla ? "ভিডিও খুলুন ↗" : "Open lesson video ↗"}
+                      </a>
+                    )}
+                  </>
                 )}
 
                 <div className={`mt-6 border-t pt-5 ${isDark ? "border-white/10" : "border-slate-200"}`}>
@@ -729,7 +799,7 @@ export default function GrammarManagement({
         )}
       </section>
 
-      {topicFormOpen && (
+      {!practiceOnly && topicFormOpen && (
         <TopicForm
           key={editingTopic?.id ?? "new-topic"}
           isDark={isDark}
@@ -1032,6 +1102,20 @@ function QuestionForm({
       );
       return;
     }
+    if (
+      fields.type === "MULTIPLE_CHOICE" &&
+      !fields.options
+        .split("\n")
+        .map((option) => option.trim().toLowerCase())
+        .includes(fields.answer.trim().toLowerCase())
+    ) {
+      setError(
+        isBangla
+          ? "সঠিক উত্তরটি options-এর একটি option-এর সঙ্গে মিলতে হবে।"
+          : "The correct answer must match one of the multiple-choice options."
+      );
+      return;
+    }
     try {
       await onSubmit(fields);
     } catch (submitError) {
@@ -1072,8 +1156,8 @@ function QuestionForm({
             </h2>
             <p className="mt-1 text-sm text-slate-400">
               {isBangla
-                ? "প্রশ্নের ধরন, উত্তর এবং explanation নির্ধারণ করুন।"
-                : "Set the question type, answer, and explanation."}
+                ? "সঠিক উত্তরটি learner-এর উত্তরের সঙ্গে মিলিয়ে দেখা হবে। Explanation উত্তর জমা দেওয়ার পর feedback হিসেবে দেখানো হবে।"
+                : "The learner's answer is checked against the correct answer. The explanation is shown as feedback after submission."}
             </p>
           </div>
           <button

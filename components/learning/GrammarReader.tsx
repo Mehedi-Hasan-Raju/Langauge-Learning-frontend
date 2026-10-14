@@ -42,6 +42,7 @@ interface GrammarReaderProps {
   chapterId: string;
   token: string;
   loginHref: string;
+  showPractice?: boolean;
 }
 
 class GrammarApiError extends Error {
@@ -71,37 +72,69 @@ function getStringList(value: unknown): string[] {
     : [];
 }
 
+function isYouTubeUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    const host = url.hostname.toLowerCase();
+    return (
+      (url.protocol === "https:" || url.protocol === "http:") &&
+      (host === "youtu.be" ||
+      host === "youtube.com" ||
+      host.endsWith(".youtube.com") ||
+      host === "youtube-nocookie.com" ||
+        host.endsWith(".youtube-nocookie.com"))
+    );
+  } catch {
+    return false;
+  }
+}
+
 function getYouTubeEmbedUrl(value: string): string | null {
   try {
     const url = new URL(value);
-    if (url.protocol !== "https:" && url.protocol !== "http:") return null;
-
     const host = url.hostname.toLowerCase();
-    let videoId = "";
+    const segments = url.pathname.split("/").filter(Boolean);
+    const videoId =
+      url.searchParams.get("v") ??
+      (host === "youtu.be"
+        ? segments[0]
+        : url.pathname === "/v" || url.pathname === "/u"
+          ? segments[1]
+          : /^(?:embed|shorts|live)\/[^/]+$/i.test(segments.join("/"))
+            ? segments[1]
+            : undefined);
 
-    if (host === "youtu.be") {
-      videoId = url.pathname.split("/").filter(Boolean)[0] ?? "";
-    } else if (
-      host === "youtube.com" ||
-      host === "www.youtube.com" ||
-      host === "m.youtube.com" ||
-      host === "youtube-nocookie.com" ||
-      host === "www.youtube-nocookie.com"
-    ) {
-      if (url.pathname === "/watch") {
-        videoId = url.searchParams.get("v") ?? "";
-      } else {
-        const match = url.pathname.match(/^\/(?:embed|shorts|live)\/([^/?]+)/);
-        videoId = match?.[1] ?? "";
-      }
-    } else {
-      return null;
+    if (videoId && /^[\w-]{11}$/.test(videoId)) {
+      return `https://www.youtube.com/embed/${videoId}`;
     }
 
-    if (!/^[\w-]{11}$/.test(videoId)) return null;
-    return `https://www.youtube-nocookie.com/embed/${videoId}`;
+    const playlistId = url.searchParams.get("list");
+    if (playlistId && /^[\w-]+$/.test(playlistId)) {
+      return `https://www.youtube.com/embed/videoseries?list=${encodeURIComponent(playlistId)}`;
+    }
+
+    return null;
   } catch {
     return null;
+  }
+}
+
+function getSafeVideoUrl(value: string): string | null {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" || url.protocol === "http:"
+      ? url.toString()
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function isDirectVideoUrl(value: string): boolean {
+  try {
+    return /\.(mp4|webm|ogg|mov)(?:$|[?#])/i.test(new URL(value).pathname + new URL(value).search);
+  } catch {
+    return false;
   }
 }
 
@@ -109,6 +142,7 @@ export default function GrammarReader({
   chapterId,
   token,
   loginHref,
+  showPractice = true,
 }: GrammarReaderProps) {
   const { language } = useLanguage();
   const { theme } = useTheme();
@@ -326,9 +360,12 @@ export default function GrammarReader({
         const rules = getStringList(topic.rules);
         const examples = getStringList(topic.examples);
         const commonMistakes = getStringList(topic.commonMistakes);
-        const embedUrl = topic.videoUrl
-          ? getYouTubeEmbedUrl(topic.videoUrl)
+        const videoUrl = topic.videoUrl
+          ? getSafeVideoUrl(topic.videoUrl)
           : null;
+        const youtubeVideo = videoUrl ? isYouTubeUrl(videoUrl) : false;
+        const embedUrl = videoUrl ? getYouTubeEmbedUrl(videoUrl) : null;
+        const directVideo = videoUrl && isDirectVideoUrl(videoUrl);
 
         return (
           <article
@@ -342,6 +379,19 @@ export default function GrammarReader({
               <h3 className={`mt-2 text-2xl font-bold sm:text-3xl ${headingClass}`}>
                 {topic.title}
               </h3>
+              {showPractice && topic.questions.length > 0 && (
+                <a
+                  href={`#grammar-practice-${topic.id}`}
+                  className="mt-4 inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-violet-500 to-indigo-500 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-violet-500/20 transition hover:brightness-110"
+                >
+                  {isBangla
+                    ? `${topic.questions.length}টি অনুশীলনী প্রশ্নের উত্তর দিন`
+                    : `Answer ${topic.questions.length} practice ${
+                        topic.questions.length === 1 ? "question" : "questions"
+                      }`}
+                  <span aria-hidden="true">↓</span>
+                </a>
+              )}
             </div>
 
             <div className="space-y-6 p-5 sm:p-7">
@@ -422,21 +472,51 @@ export default function GrammarReader({
                         loading="lazy"
                       />
                     </div>
+                  ) : directVideo && videoUrl ? (
+                    <video
+                      controls
+                      preload="metadata"
+                      className="max-h-[70vh] w-full rounded-2xl border border-white/10 bg-black"
+                    >
+                      <source src={videoUrl} />
+                      {isBangla
+                        ? "আপনার browser এই video format চালাতে পারছে না।"
+                        : "Your browser cannot play this video format."}
+                    </video>
+                  ) : videoUrl && !youtubeVideo ? (
+                    <div className={`rounded-2xl border p-4 ${isDark ? "border-white/10 bg-black/10" : "border-slate-200 bg-slate-50"}`}>
+                      <p className={`text-sm ${mutedClass}`}>
+                        {isBangla
+                          ? "ভিডিওটি নতুন tab-এ খুলুন।"
+                          : "Open this lesson video in a new tab."}
+                      </p>
+                      <a
+                        href={videoUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-3 inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-red-500 to-amber-400 px-4 py-2.5 text-sm font-semibold text-white"
+                      >
+                        {isBangla ? "ভিডিও দেখুন ↗" : "Watch video ↗"}
+                      </a>
+                    </div>
                   ) : (
                     <p className="rounded-xl border border-amber-400/20 bg-amber-400/5 p-4 text-sm text-amber-200">
                       {isBangla
-                        ? "এই video URL টি সঠিক YouTube link নয়।"
-                        : "This video URL is not a valid supported YouTube link."}
+                        ? "এই YouTube link embed করা যাচ্ছে না। Admin-কে video link যাচাই করতে বলুন।"
+                        : "This YouTube link could not be embedded. Ask an admin to check the video link."}
                     </p>
                   )}
                 </section>
               )}
 
-              {topic.questions.length > 0 && (
-                <section className="border-t border-white/10 pt-5">
+              {showPractice && topic.questions.length > 0 && (
+                <section
+                  id={`grammar-practice-${topic.id}`}
+                  className="scroll-mt-24 border-t border-white/10 pt-5"
+                >
                   <div className="mb-4 flex items-center justify-between gap-3">
                     <h4 className={`font-bold ${headingClass}`}>
-                      {isBangla ? "অনুশীলন" : "Practice"}
+                      {isBangla ? "অনুশীলন প্রশ্ন" : "Practice questions"}
                     </h4>
                     <span className={`text-xs ${mutedClass}`}>
                       {topic.questions.length}{" "}

@@ -9,6 +9,7 @@ import {
   BookOpen,
   Check,
   ChevronDown,
+  ClipboardCheck,
   Headphones,
   LoaderCircle,
   LockKeyhole,
@@ -19,6 +20,7 @@ import {
 import { useLanguage } from "../../../context/LanguageContext";
 import { useTheme } from "../../../context/ThemeContext";
 import GrammarReader from "../../../components/learning/GrammarReader";
+import VocabularyExerciseReader from "../../../components/learning/VocabularyExerciseReader";
 
 const API_URL = "http://localhost:5000/api";
 
@@ -60,7 +62,7 @@ interface Vocabulary {
   chapterId: string;
 }
 
-type ChapterContentTab = "vocabulary" | "grammar";
+type ChapterContentTab = "vocabulary" | "vocabulary-practice" | "grammar";
 
 class LearningApiError extends Error {
   constructor(
@@ -480,6 +482,7 @@ export default function LearningLevelPage() {
                     setSelectedBookId(event.target.value);
                     setSelectedChapterId("");
                     setVocabulary([]);
+                    setContentTab("vocabulary");
                   }}
                   disabled={loadingBooks || books.length === 0}
                   className={`w-full appearance-none rounded-xl border px-4 py-3 pr-10 text-sm outline-none transition ${
@@ -555,6 +558,9 @@ export default function LearningLevelPage() {
                         setSelectedChapterId(chapter.id);
                         setVocabulary([]);
                         setSearch("");
+                        if (chapter.sectionNo === 0) {
+                          setContentTab("vocabulary");
+                        }
                       }}
                       className={`w-full rounded-xl border px-3 py-3 text-left transition ${
                         active
@@ -660,6 +666,22 @@ export default function LearningLevelPage() {
                   <BookOpen size={16} />
                   {isBangla ? "শব্দভাণ্ডার" : "Vocabulary"}
                 </button>
+                {selectedChapter.sectionNo > 0 && (
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={contentTab === "vocabulary-practice"}
+                    onClick={() => setContentTab("vocabulary-practice")}
+                    className={`inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition ${
+                      contentTab === "vocabulary-practice"
+                        ? "bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow"
+                        : mutedTextClass
+                    }`}
+                  >
+                    <ClipboardCheck size={16} />
+                    {isBangla ? "শব্দ অনুশীলন" : "Vocabulary Practice"}
+                  </button>
+                )}
                 <button
                   type="button"
                   role="tab"
@@ -672,13 +694,29 @@ export default function LearningLevelPage() {
                   }`}
                 >
                   <NotebookText size={16} />
-                  {isBangla ? "ব্যাকরণ" : "Grammar"}
+                  {selectedChapter.sectionNo > 0
+                    ? isBangla
+                      ? "ব্যাকরণ ও অনুশীলন"
+                      : "Grammar Practice"
+                    : isBangla
+                      ? "ব্যাকরণ"
+                      : "Grammar"}
                 </button>
               </div>
             )}
 
             {contentTab === "grammar" && selectedChapter ? (
               <GrammarReader
+                key={selectedChapter.id}
+                chapterId={selectedChapter.id}
+                token={token}
+                loginHref={loginHref}
+                showPractice={selectedChapter.sectionNo > 0}
+              />
+            ) : selectedChapter &&
+              contentTab === "vocabulary-practice" &&
+              selectedChapter.sectionNo > 0 ? (
+              <VocabularyExerciseReader
                 key={selectedChapter.id}
                 chapterId={selectedChapter.id}
                 token={token}
@@ -865,7 +903,13 @@ export default function LearningLevelPage() {
                   <button
                     type="button"
                     disabled={!previousChapter}
-                    onClick={() => previousChapter && setSelectedChapterId(previousChapter.id)}
+                    onClick={() => {
+                      if (!previousChapter) return;
+                      setSelectedChapterId(previousChapter.id);
+                      if (previousChapter.sectionNo === 0) {
+                        setContentTab("vocabulary");
+                      }
+                    }}
                     className={`inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-40 ${
                       isDark
                         ? "border-white/10 text-slate-300 hover:bg-white/5"
@@ -881,7 +925,13 @@ export default function LearningLevelPage() {
                   <button
                     type="button"
                     disabled={!nextChapter}
-                    onClick={() => nextChapter && setSelectedChapterId(nextChapter.id)}
+                    onClick={() => {
+                      if (!nextChapter) return;
+                      setSelectedChapterId(nextChapter.id);
+                      if (nextChapter.sectionNo === 0) {
+                        setContentTab("vocabulary");
+                      }
+                    }}
                     className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-red-500 to-amber-400 px-4 py-3 text-sm font-semibold text-white transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     {isBangla ? "পরের অধ্যায়" : "Next chapter"}
